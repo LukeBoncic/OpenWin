@@ -1,13 +1,12 @@
-#include <stdint.h>
-#include <stdarg.h>
-
+#include "stdint.h"
+#include "stdarg.h"
 #include "print.h"
 #include "lib.h"
 
 static struct ScreenBuffer screen_buffer = {(char*)(0xb8000), 0, 0};
 
-// Convert unsigned decimal to string
-static int udecimal_to_string(char *buffer, int position, uint64_t digits) {
+static int udecimal_to_string(char *buffer, int position, uint64_t digits)
+{
 	char digits_map[10] = "0123456789";
 	char digits_buffer[25];
 	int size = 0;
@@ -24,8 +23,8 @@ static int udecimal_to_string(char *buffer, int position, uint64_t digits) {
 	return size;
 }
 
-// Convert signed decimal to string
-static int decimal_to_string(char *buffer, int position, int64_t digits) {
+static int decimal_to_string(char *buffer, int position, int64_t digits)
+{
 	int size = 0;
 
 	if (digits < 0) {
@@ -38,8 +37,8 @@ static int decimal_to_string(char *buffer, int position, int64_t digits) {
 	return size;
 }
 
-// Convert hexadecimal to string
-static int hex_to_string(char *buffer, int position, uint64_t digits) {
+static int hex_to_string(char *buffer, int position, uint64_t digits)
+{
 	char digits_buffer[25];
 	char digits_map[16] = "0123456789ABCDEF";
 	int size = 0;
@@ -58,8 +57,8 @@ static int hex_to_string(char *buffer, int position, uint64_t digits) {
 	return size+1;
 }
 
-// Read string into buffer
-static int read_string(char *buffer, int position, const char *string) {
+static int read_string(char *buffer, int position, const char *string)
+{
 	int index = 0;
 
 	for (index = 0; string[index] != '\0'; index++) {
@@ -69,8 +68,8 @@ static int read_string(char *buffer, int position, const char *string) {
 	return index;
 }
 
-// Write characters in buffer to screen_buffer
-void write_screen(const char *buffer, int size, char color) {
+void write_screen(const char *buffer, int size, char color)
+{
 	struct ScreenBuffer *sb = &screen_buffer;
 	int column = sb->column;
 	int row = sb->row;
@@ -116,8 +115,8 @@ void write_screen(const char *buffer, int size, char color) {
 	sb->row = row;
 }
 
-// Print formatted text to the screen
-int print(const char *format, ...) {
+int printk(const char *format, ...)
+{
 	char buffer[1024];
 	int buffer_size = 0;
 	int64_t integer = 0;

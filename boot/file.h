@@ -1,7 +1,7 @@
 #ifndef _FILE_H_
 #define _FILE_H_
 
-#include <stdint.h>
+#include "stdint.h"
 
 struct BPB {
 	uint8_t jump[3];
@@ -42,23 +42,11 @@ struct DirEntry {
 	uint32_t file_size;
 } __attribute__((packed));
 
-struct DiskAddresses {
-	uint64_t fs_base_address;
-};
+#define FS_BASE 0x30000000
+#define ENTRY_EMPTY 0
+#define ENTRY_DELETED 0xe5
 
-struct AttributeTypes {
-	uint8_t entry_empty;
-	uint8_t entry_deleted;
-};
-
-struct FileGlobals {
-	struct DiskAddresses addresses;
-	struct AttributeTypes attr_types;
-};
-
-extern struct FileGlobals file_globals;
-
-// Find the file from path and load it to addr
-int load_file(char *path, uint64_t addr, struct FileGlobals globals);
+int load_file(char *path, uint64_t addr);
+void init_fs(void);
 
 #endif

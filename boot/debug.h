@@ -1,12 +1,13 @@
 #ifndef _DEBUG_H_
 #define _DEBUG_H_
 
-#include <stdint.h>
+#include "stdint.h"
 
-// This macro is used to check if a certain expression which should be true is actually false for
-// debugging purposes, and if it is false it will call error_check() which will stop the program
-#define assert(e) if (!(e)) error_check(__FILE__,__LINE__) 
+#define ASSERT(e) do { \
+	if (!(e)) \
+		error_check(__FILE__,__LINE__); \
+} while (0) 
 
-void error_check(char *file, int line);
+void error_check(char *file, uint64_t line);
 
 #endif

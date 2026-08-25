@@ -2,246 +2,282 @@
 [ORG 0x7e00]
 
 start:
-	mov [drive_id], dl
-	mov eax, 0x80000000
-	cpuid
-	cmp eax, 0x80000001
-	jb error
-	mov eax, 0x80000001
-	cpuid
-	test edx, (1<<29)
-	jz error
-	test edx, (1<<26)
-	jz error
-	mov ax, 0x2000
-	mov es, ax
+	mov [DriveId],dl
 
-get_memory_info_start:
-	mov eax, 0xe820
-	mov edx, 0x534d4150
-	mov ecx, 20
-	mov dword [es:0], 0
-	mov edi, 8
-	xor ebx, ebx
+	mov eax,0x80000000
+	cpuid
+	cmp eax,0x80000001
+	jb NotSupport
+
+	mov eax,0x80000001
+	cpuid
+	test edx,(1<<29)
+	jz NotSupport
+	test edx,(1<<26)
+	jz NotSupport
+
+	mov ax,0x2000
+	mov es,ax
+
+GetMemInfoStart:
+	mov eax,0xe820
+	mov edx,0x534d4150
+	mov ecx,20
+	mov dword[es:0],0
+
+	mov edi,8
+	xor ebx,ebx
 	int 0x15
-	jc error
+	jc NotSupport
 
-get_memory_info:
-	cmp dword [es:di+16], 1
-	jne continue
-	cmp dword [es:di+4], 0
-	jne continue
-	mov eax, [es:di]
-	cmp eax, 0x30000000
-	ja continue
-	cmp dword [es:di+12], 0
-	jne find
-	add eax, [es:di+8]
+GetMemInfo:
+	cmp dword[es:di+16],1
+	jne Cont
+	cmp dword[es:di+4],0
+	jne Cont
+	mov eax,[es:di]
+	cmp eax,0x30000000
+	ja Cont
+	cmp dword[es:di+12],0
+	jne Find
+	add eax,[es:di+8]
 	cmp eax,0x30000000 + 100*1024*1024
-	jb continue
+	jb Cont
 	
-find:
-	mov byte [load_image], 1
+Find:
+	mov byte[LoadImage],1
 
-continue:
-	add edi, 20
-	inc dword [es:0]
-	test ebx, ebx
-	jz get_memory_done
+Cont:
+	add edi,20
+	inc dword[es:0]
+	test ebx,ebx
+	jz GetMemDone
 
-	mov eax, 0xe820
-	mov edx, 0x534d4150
-	mov ecx, 20
+	mov eax,0xe820
+	mov edx,0x534d4150
+	mov ecx,20
 	int 0x15
-	jnc get_memory_info
+	jnc GetMemInfo
 
-get_memory_done:
-	cmp byte [load_image], 1
-	jne error
+GetMemDone:
+	cmp byte[LoadImage],1
+	jne ReadError
 
-test_a20:
-	mov ax, 0xffff
-	mov es, ax
-	mov word [0x7c00],0xa200
-	cmp word [es:0x7c10],0xa200
-	jne a20_line_set
+TestA20:
+	mov ax,0xffff
+	mov es,ax
+
+	mov word[0x7c00],0xa200
+	cmp word[es:0x7c10],0xa200
+	jne SetA20LineDone
 	mov word[0x7c00],0xb200
 	cmp word[es:0x7c10],0xb200
-	je error
+	je End
 	
-a20_line_set:
-	xor ax, ax
-	mov es, ax
+SetA20LineDone:
+	xor ax,ax
+	mov es,ax
 
-set_video_mode:
-	mov ax, 3
+SetVideoMode:
+	mov ax,3
 	int 0x10
+
 	cli
-	lgdt [gdt_32_pointer]
-	mov eax, cr0
-	or eax, 1
-	mov cr0, eax
+	lgdt [Gdt32Ptr]
 
-load_filesystem:
-	mov ax, 0x10
-	mov fs, ax
-	mov eax, cr0
-	and al, 0xfe
-	mov cr0, eax
+	mov eax,cr0
+	or eax,1
+	mov cr0,eax
 
-unreal_mode:
+LoadFS:
+	mov ax,0x10
+	mov fs,ax
+
+	mov eax,cr0
+	and al,0xfe
+	mov cr0,eax
+
+BigRealMode:
 	sti
-	mov cx, 203*16*63/100
-	xor ebx, ebx
-	mov edi, 0x30000000
-	xor ax, ax
-	mov fs, ax
+	mov cx,203*16*63/100
+	xor ebx,ebx
+	mov edi,0x30000000
+	xor ax,ax
+	mov fs,ax
 
-read_fat:
+ReadFAT:
 	push ecx
 	push ebx
 	push edi
 	push fs
-	mov ax, 100
-	call read_sectors
-	test al, al
-	jnz error
+	
+	mov ax,100
+	call ReadSectors
+	test al,al
+	jnz  ReadError
 
 	pop fs
 	pop edi
 	pop ebx
 
-	mov cx, 512*100/4
-	mov esi, 0x60000
+	mov cx,512*100/4
+	mov esi,0x60000
 	
-copy_data:
-	mov eax, [fs:esi]
-	mov [fs:edi], eax
-	add esi, 4
-	add edi, 4
-	loop copy_data
-	pop ecx
-	add ebx, 100
-	loop read_fat
+CopyData:
+	mov eax,[fs:esi]
+	mov [fs:edi],eax
 
-read_remaining_sectors:
+	add esi,4
+	add edi,4
+	loop CopyData
+
+	pop ecx
+
+	add ebx,100
+	loop ReadFAT
+
+ReadRemainingSectors:
 	push edi
 	push fs
-	mov ax, (203*16*63) % 100
-	call read_sectors
-	test al, al
-	jnz error
+
+	mov ax,(203*16*63) % 100
+	call ReadSectors
+	test al,al
+	jnz  ReadError
+
 	pop fs
 	pop edi
-	mov cx, (((203*16*63) % 100) * 512)/4
-	mov esi, 0x60000
+	
+	mov cx,(((203*16*63) % 100) * 512)/4
+	mov esi,0x60000
 
-copy_remaining_data: 
-	mov eax, [fs:esi]
-	mov [fs:edi], eax
-	add esi, 4
-	add edi, 4
-	loop copy_remaining_data
+CopyRemainingData: 
+	mov eax,[fs:esi]
+	mov [fs:edi],eax
+
+	add esi,4
+	add edi,4
+	loop CopyRemainingData
+
+
 	cli
-	lidt [idt_32_pointer]
-	mov eax, cr0
-	or eax, 1
-	mov cr0, eax
-	jmp 08:protected_mode_entry
+	lidt [Idt32Ptr]
 
-read_sectors:
-	mov si, read_packet
-	mov word[si], 0x10
-	mov word[si+0x2], ax
-	mov word[si+0x4], 0
-	mov word[si+0x6], 0x6000
-	mov dword[si+0x8], ebx
-	mov dword[si+0xc], 0
-	mov dl, [drive_id]
-	mov ah, 0x42
-	int 0x13 
+	mov eax,cr0
+	or eax,1
+	mov cr0,eax
+
+	jmp 08:PMEntry
+
+ReadSectors:
+	mov si,ReadPacket
+	mov word[si],0x10
+	mov word[si+2],ax
+	mov word[si+4],0
+	mov word[si+6],0x6000
+	mov dword[si+8],ebx
+	mov dword[si+0xc],0
+	mov dl,[DriveId]
+	mov ah,0x42
+	int 0x13
+	
 	setc al
 	ret
 
-error:
-	mov ah, 0x13
-	mov al, 1
-	mov bx, 0xa
-	xor dx, dx
-	mov bp, message
-	mov cx, message_length 
+ReadError:
+NotSupport:
+	mov ah,0x13
+	mov al,1
+	mov bx,0xa
+	xor dx,dx
+	mov bp,Message
+	mov cx,MessageLen 
 	int 0x10
 
-fail:
-	jmp fail
+End:
+	hlt
+	jmp End
 
 [BITS 32]
+PMEntry:
+	mov ax,0x10
+	mov ds,ax
+	mov es,ax
+	mov ss,ax
+	mov esp,0x7c00
 
-protected_mode_entry:
-	mov ax, 0x10
-	mov ds, ax
-	mov es, ax
-	mov ss, ax
-	mov esp, 0x7c00
 	cld
-	mov edi, 0x70000
-	xor eax, eax
-	mov ecx, 0x10000/4
+	mov edi,0x70000
+	xor eax,eax
+	mov ecx,0x10000/4
 	rep stosd
-	mov dword[0x70000], 0x71007
-	mov dword[0x71000], 10000111b
-	mov eax, (0xffff800000000000>>39)
-	and eax, 0x1ff
-	mov dword[0x70000+eax*8], 0x72003
-	mov dword[0x72000], 10000011b
-	lgdt [gdt_64_pointer]
-	mov eax, cr4
-	or eax, (1 << 5)
-	mov cr4, eax
-	mov eax, 0x70000
-	mov cr3, eax
-	mov ecx, 0xc0000080
+	
+	mov dword[0x70000],0x71007
+	mov dword[0x71000],10000111b
+
+	mov eax,(0xffff800000000000>>39)
+	and eax,0x1ff
+	mov dword[0x70000+eax*8],0x72003
+	mov dword[0x72000],10000011b
+
+	lgdt [Gdt64Ptr]
+
+	mov eax,cr4
+	or eax,(1 << 5)
+	mov cr4,eax
+
+	mov eax,0x70000
+	mov cr3,eax
+
+	mov ecx,0xc0000080
 	rdmsr
-	or eax, (1 << 8)
+	or eax,(1 << 8)
 	wrmsr
-	mov eax, cr0
-	or eax, (1<<31)
-	mov cr0, eax
-	jmp 08:long_mode_entry
+
+	mov eax,cr0
+	or eax,(1<<31)
+	mov cr0,eax
+
+	jmp 08:LMEntry
+
+PEnd:
+	hlt
+	jmp PEnd
 
 [BITS 64]
+LMEntry:
+	mov rsp,0x7c00
 
-long_mode_entry:
-	mov rsp, 0x7c00
 	cld
-	mov rdi, 0x100000
-	mov rsi, c_module
-	mov rcx, 512*15/8
+	mov rdi,0x100000
+	mov rsi,CModule
+	mov rcx,512*15/8
 	rep movsq
 
-	mov rax, 0xffff800000100000
+	mov rax,0xffff800000100000
 	jmp rax
 
-end:
-	jmp end
+LEnd:
+	hlt
+	jmp LEnd
 
-message: db "Error with second stage bootloader"
-message_length: equ $ - message
+Message:	db "We have an error in boot process"
+MessageLen: equ $-Message
 
-read_packet: times 16 db 0
-drive_id: db 0 
-load_image: db 0
+ReadPacket: times 16 db 0
+DriveId: db 0
+LoadImage: db 0
 
-gdt_32:
+Gdt32:
 	dq 0
-code_32:
+Code32:
 	dw 0xffff
 	dw 0
 	db 0
 	db 0x9a
 	db 0xcf
 	db 0
-data_32:
+Data32:
 	dw 0xffff
 	dw 0
 	db 0
@@ -249,24 +285,22 @@ data_32:
 	db 0xcf
 	db 0
 	
-gdt_32_length: equ $ - gdt_32
+Gdt32Len: equ $-Gdt32
 
-gdt_32_pointer:
-	dw gdt_32_length - 1
-	dd gdt_32
+Gdt32Ptr: dw Gdt32Len-1
+		  dd Gdt32
 
-idt_32_pointer:
-	dw 0
-	dd 0
+Idt32Ptr: dw 0
+		  dd 0
 
-gdt_64:
+Gdt64:
 	dq 0
 	dq 0x0020980000000000
 
-gdt_64_length: equ $ - gdt_64
+Gdt64Len: equ $-Gdt64
 
-gdt_64_pointer:
-	dw gdt_64_length - 1
-	dd gdt_64
+Gdt64Ptr: dw Gdt64Len-1
+		  dd Gdt64
 
-c_module:	
+CModule:
+	
